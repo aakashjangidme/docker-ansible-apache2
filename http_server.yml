@@ -1,6 +1,6 @@
 - name: Install Docker & Configure Apache Web-Server 
 #	gather_facts: No
-  hosts: cli_1
+  hosts: webserver
   vars:
     image_name: httpd
 #use variables where possible 
