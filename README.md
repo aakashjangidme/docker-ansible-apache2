@@ -4,4 +4,4 @@
 > 
 Read the 
 [Article](https://medium.com/@aakashjangidme/integrating-ansible-and-docker-5e05f0de7305)  for usage. \
-![apache server](image/BrowserOut.jpg) 
+![apache server](image/BrowserOut.png) 
