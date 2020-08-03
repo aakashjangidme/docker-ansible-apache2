@@ -1,0 +1,127 @@
+- name: Install Docker & Configure Apache Web-Server 
+#	gather_facts: No
+  hosts: cli_1
+  vars:
+    image_name: httpd
+#use variables where possible 
+  tasks:
+    - name: check dir
+      stat:
+        path: /dvd
+      register: p
+# create and mount dvd to /dvd
+    - name: Create /dvd folder
+      file:
+        path: /dvd
+        state: directory
+        mode: "0755"
+      when: p.stat.exists == false
+
+    - name: Mount dvd
+      mount:
+        path: /dvd/
+        src: /dev/sr0
+        fstype: iso9660
+        opts: ro,noauto
+        state: mounted
+
+# add BaseOS and AppStream repo for yum.
+    - name: BaseOS repo for Yum
+      yum_repository:
+        name: BaseOS
+        description: BaseOS Yum repo
+        file: rhel8
+        baseurl: file:///dvd/BaseOS
+        gpgcheck: no
+
+    - name: AppStream repo for Yum
+      yum_repository:
+        name: AppStream
+        description: AppStream Yum repo
+        file: rhel8
+        baseurl: file:///dvd/AppStream
+        gpgcheck: no
+
+
+#check if a package is installed
+    - name: "Check if packages are installed"
+      package_facts:
+        manager: "auto"
+
+# configure yum for CLI systems!
+    - name: install yum utils - for CLIs
+      yum:
+        name: 'yum-utils, python3'
+        state: latest
+        update_cache: True
+      when: " 'dnf-utils' not in ansible_facts.packages or 'python3' not in ansible_facts.packages"
+
+#docker repo from stable channel
+
+    - name: Add docker repo
+      yum_repository:
+        name: docker
+        description: docker-repo
+        file: docker
+        baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+        gpgcheck: no
+
+# install and start docker service      
+    - name: install docker
+# using shell to force "--nobest"
+      shell: "yum install docker-ce --nobest -y"
+      become: yes
+      when: "'docker-ce' not in ansible_facts.packages"
+     
+    - name: Start docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      become: yes
+
+# needed python interpreter to w/ with docker-ansible      
+    - name: Install Docker Module for Python
+      pip:
+        name: docker
+
+#    - name: Pull "{{ image_name }}" image on top of Docker
+    - name: Pull an image
+      docker_image:
+        name: "{{ image_name }}"
+        source: pull
+    
+    - name: Get infos on container
+      docker_container_info:
+        name: "{{ image_name }}_server "
+      register: result
+    - debug:
+        msg: "{{ 'Container exists already' if result.exists else 'Launching a Container' }}"
+
+# this file should be in controller node
+    - name: Copy files from controller node to manager node at /var/www/html
+      copy:
+        src: index.html
+        dest: /var/www/html/
+
+# create and launch the http server container at port 8080        
+    - name: launching "{{ image_name }}" container
+      docker_container:
+        name: http_server
+        image: "{{ image_name }}"
+        state: started
+        ports: "8080:80"
+# List of volumes to mount within the container.
+        volumes:
+          - "/var/www/html/:/usr/local/apache2/htdocs/:ro"
+      when: result.exists == false
+
+# Check container status and output         
+    - name: check container status
+      command: docker ps
+      register: res
+    - debug: var=res.stdout
+
+# disable firewall temprorily               
+    - name: disabling firewall to access server from other host
+      command: systemctl stop firewalld
